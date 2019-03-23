@@ -76,7 +76,8 @@ class TwoLayerNet(object):
     # Store the result in the scores variable, which should be an array of      #
     # shape (N, C).                                                             #
     #############################################################################
-    pass
+    h1 = np.fmax(0, X.dot(W1) + b1)
+    scores = h1.dot(W2) + b2
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -93,7 +94,15 @@ class TwoLayerNet(object):
     # in the variable loss, which should be a scalar. Use the Softmax           #
     # classifier loss.                                                          #
     #############################################################################
-    pass
+    # first_ shift value such that zero is maximum (to make exponantiation more stable)
+    scores -= scores.max()
+    correct_class_exp = np.exp(scores[np.arange(N), y])
+    sum_other_exp = np.sum(np.exp(scores), axis=1)
+    loss = (-1) * np.sum(np.log(correct_class_exp / sum_other_exp))
+
+    loss /= N
+
+    loss += reg * np.sum(W1 * W1) + reg * np.sum(W2 * W2)
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -105,7 +114,20 @@ class TwoLayerNet(object):
     # and biases. Store the results in the grads dictionary. For example,       #
     # grads['W1'] should store the gradient on W1, and be a matrix of same size #
     #############################################################################
-    pass
+    dscores = np.exp(scores) / sum_other_exp.reshape(N,1)
+    dscores[np.arange(N),y] -= 1 # correct for gradient of correct class
+    dscores /= N
+
+    grads['b2'] = np.sum(dscores, axis=0, keepdims=True)
+    grads['W2'] = np.dot(h1.T,dscores) + 2 * reg * W2
+
+    # get gradient from hidden layer
+    dhidden = np.dot(dscores, W2.T)
+    dhidden[h1 == 0] = 0 
+
+    grads['b1'] = np.sum(dhidden, axis=0, keepdims=True)
+    grads['W1'] = np.dot(X.T, dhidden) + 2 * reg * W1
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
