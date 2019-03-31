@@ -200,8 +200,13 @@ class FullyConnectedNet(object):
                 self.params[weights_str] = weight_scale * np.random.randn(hidden_dims[i-1], hidden_dims[i])
                 self.params[bias_str] = np.zeros(hidden_dims[i])
 
+        dims = np.hstack((input_dim, hidden_dims, num_classes))
         if(normalization == "batchnorm"):
-            pass
+            for i in range(0, self.num_layers-1):
+                scale_str = 'gamma' + str(i+1)
+                shift_str = 'beta' + str(i+1)
+                self.params[scale_str] = np.ones(dims[i+1])
+                self.params[shift_str] = np.zeros(dims[i+1])
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -260,15 +265,32 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
+
         num_hidden = self.num_layers - 1
         scores = X
         cache_history = []
+        cache_dropout_history = []
 
         for i in range(0,num_hidden):
             weights_str = 'W' + str(i+1)
             bias_str = 'b' + str(i+1)
-            scores, cache = affine_relu_forward(scores, self.params[weights_str], self.params[bias_str])
-            cache_history.append(cache)
+            if(self.normalization == 'batchnorm'):
+                gamma_str = 'gamma' + str(i+1)
+                beta_str = 'beta' + str(i+1)
+                scores, cache_fc = affine_forward(scores, self.params[weights_str], self.params[bias_str])
+                scores, cache_batchnorm = batchnorm_forward(scores, self.params[gamma_str], self.params[beta_str], self.bn_params[i])
+                scores, cache_relu = relu_forward(scores)
+                cache = (cache_fc, cache_relu, cache_batchnorm)
+                cache_history.append(cache)
+
+            else:
+                scores, cache = affine_relu_forward(scores, self.params[weights_str], self.params[bias_str])
+                cache_history.append(cache)
+
+            if(self.use_dropout):
+                scores, cache_dropout = dropout_forward(scores, self.dropout_param) 
+                cache_dropout_history.append(cache_dropout)
+
 
         # now: compute scores from output layer
         weights_str = 'W' + str(self.num_layers)
@@ -304,6 +326,7 @@ class FullyConnectedNet(object):
         weights_str = 'W' + str(self.num_layers)
         bias_str = 'b' + str(self.num_layers)
         dx, dw, db = affine_backward(dout, cache_history.pop())
+
         grads[weights_str] = dw + self.reg * self.params[weights_str]
         grads[bias_str] = db
 
@@ -311,7 +334,20 @@ class FullyConnectedNet(object):
         for layer in range(num_hidden,0,-1):
             weights_str = 'W' + str(layer)
             bias_str = 'b' + str(layer)
-            dx, dw, db = affine_relu_backward(dx, cache_history.pop())
+            if(self.use_dropout):
+                dx = dropout_backward(dx, cache_dropout_history.pop())
+            if(self.normalization == 'batchnorm'):
+                cache_fc, cache_relu, cache_batchnorm = cache_history.pop()
+                gamma_str = 'gamma' + str(layer)
+                beta_str = 'beta' + str(layer)
+                dx = relu_backward(dx, cache_relu)
+                dx, dgamma, dbeta = batchnorm_backward(dx, cache_batchnorm)
+                dx, dw, db = affine_backward(dx, cache_fc)
+                grads[gamma_str] = dgamma
+                grads[beta_str] = dbeta
+            else:
+                dx, dw, db = affine_relu_backward(dx, cache_history.pop())
+
             grads[weights_str] = dw + self.reg * self.params[weights_str]
             grads[bias_str] = db
 
